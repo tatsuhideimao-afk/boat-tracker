@@ -477,12 +477,15 @@ function exportCSV() {
 
 // ── CSV Import ─────────────────────────────────────────
 
-function parseImportDate(raw) {
-  if (!raw) return null;
-  const normalized = raw.trim().replace(/\//g, '-');
-  const date = new Date(normalized);
-  if (isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+function parseDate(str) {
+  str = str.trim();
+  const m = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (!m) return null;
+  const y = parseInt(m[1]);
+  const mo = parseInt(m[2]);
+  const d = parseInt(m[3]);
+  if (isNaN(y) || isNaN(mo) || isNaN(d)) return null;
+  return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 }
 
 function importCSV(text) {
@@ -498,7 +501,7 @@ function importCSV(text) {
       // 日付,経由,投入G,投入P,回収金額,詳細,場名,レース,メモ
       // 0    1   2    3    4      5    6   7     8
       const cols = line.split(',');
-      const date = parseImportDate(cols[0]);
+      const date = parseDate(cols[0]);
       if (!date) { skipped.push({ line, reason: `日付パース失敗: "${cols[0]?.trim()}"` }); continue; }
 
       const betG  = parseInt(cols[2]?.trim() || '0', 10) || 0;
