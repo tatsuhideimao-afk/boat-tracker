@@ -489,10 +489,7 @@ function parseImportDate(raw) {
   return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 }
 
-function handleCSVImport(file) {
-  const reader = new FileReader();
-  reader.onload = e => {
-    let text = e.target.result;
+function importCSV(text) {
     if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
 
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
@@ -565,8 +562,6 @@ function handleCSVImport(file) {
     renderHistoryList();
     updateBadge(getPending().length);
     showToast(`${toAdd.length}件インポートしました`);
-  };
-  reader.readAsText(file, 'UTF-8');
 }
 
 // ── Populate dropdowns ──────────────────────────────────
@@ -618,16 +613,21 @@ function init() {
   document.getElementById('btn-export').addEventListener('click', exportCSV);
 
   // CSV インポート: ボタン → input.click() → change イベント → 処理
-  document.getElementById('btn-import').addEventListener('click', function() {
+  document.getElementById('csv-import-btn').addEventListener('click', function() {
     console.log('インポートボタンクリック');
-    document.getElementById('csv-import-input').click();
+    document.getElementById('csv-file-input').click();
   });
-  document.getElementById('csv-import-input').addEventListener('change', function(e) {
+  document.getElementById('csv-file-input').addEventListener('change', function(e) {
+    console.log('ファイル選択:', e.target.files[0].name);
     const file = e.target.files[0];
     if (!file) return;
-    console.log('ファイル選択:', file.name);
-    handleCSVImport(file);
-    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      console.log('ファイル読み込み完了');
+      const text = event.target.result;
+      importCSV(text);
+    };
+    reader.readAsText(file, 'UTF-8');
   });
 
   // Payout modal
