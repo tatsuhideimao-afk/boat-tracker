@@ -616,9 +616,18 @@ function init() {
   });
 
   document.getElementById('btn-export').addEventListener('click', exportCSV);
-  document.getElementById('csv-import-input').addEventListener('change', e => {
+
+  // CSV インポート: ボタン → input.click() → change イベント → 処理
+  document.getElementById('btn-import').addEventListener('click', function() {
+    console.log('インポートボタンクリック');
+    document.getElementById('csv-import-input').click();
+  });
+  document.getElementById('csv-import-input').addEventListener('change', function(e) {
     const file = e.target.files[0];
-    if (file) { handleCSVImport(file); e.target.value = ''; }
+    if (!file) return;
+    console.log('ファイル選択:', file.name);
+    handleCSVImport(file);
+    e.target.value = '';
   });
 
   // Payout modal
