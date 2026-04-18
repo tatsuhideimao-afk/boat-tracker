@@ -58,10 +58,7 @@ function fmtPct(n) {
 }
 
 function roiColor(roi) {
-  if (roi >= 100) return '#22c55e';
-  if (roi >= 80)  return '#3b82f6';
-  if (roi >= 60)  return '#f97316';
-  return '#ef4444';
+  return roi >= 100 ? '#3a9c2e' : '#e24b4a';
 }
 
 function esc(s) {
@@ -113,14 +110,16 @@ function groupROI(recs, keyFn, allKeys) {
   return allKeys.map(k => g[k].bet > 0 ? g[k].payout / g[k].bet * 100 : null);
 }
 
-function renderBarChart(canvasId, wrapId, labels, data, indexAxis) {
+// opts: { indexAxis, labelPos ('top'|'right'|null), counts, minCount, wrapHeight }
+function renderBarChart(canvasId, wrapId, labels, data, opts = {}) {
+  const { indexAxis = 'x', labelPos = null, counts = null, minCount = 0, wrapHeight = null } = opts;
   const wrap   = document.getElementById(wrapId);
   const canvas = document.getElementById(canvasId);
   if (!wrap || !canvas) return;
 
-  // Remove any existing no-data message
   const old = wrap.querySelector('.no-data-msg');
   if (old) old.remove();
+  if (wrapHeight) wrap.style.height = wrapHeight + 'px';
 
   const hasData = data.some(v => v !== null);
   if (!hasData) {
@@ -135,44 +134,69 @@ function renderBarChart(canvasId, wrapId, labels, data, indexAxis) {
   canvas.style.display = '';
 
   const vals   = data.map(v => v !== null ? parseFloat(v.toFixed(1)) : 0);
-  const colors = vals.map((v,i) => data[i] === null ? '#e2e8f0' : roiColor(v));
+  const colors = vals.map((v, i) => {
+    if (data[i] === null) return '#e2e8f0';
+    if (counts && counts[i] < minCount) return '#888780';
+    return roiColor(v);
+  });
+
+  const roiLabelPlugin = labelPos ? {
+    id: 'roiLabels',
+    afterDatasetsDraw(chart) {
+      const ctx  = chart.ctx;
+      const meta = chart.getDatasetMeta(0);
+      meta.data.forEach((bar, i) => {
+        if (data[i] === null) return;
+        const text = vals[i].toFixed(1) + '%';
+        ctx.save();
+        ctx.font = 'bold 10px -apple-system,sans-serif';
+        ctx.fillStyle = '#1e293b';
+        if (labelPos === 'right') {
+          ctx.textAlign    = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, bar.x + 4, bar.y);
+        } else {
+          ctx.textAlign    = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(text, bar.x, bar.y - 3);
+        }
+        ctx.restore();
+      });
+    }
+  } : null;
 
   if (charts[canvasId]) { charts[canvasId].destroy(); }
 
   charts[canvasId] = new Chart(canvas.getContext('2d'), {
     type: 'bar',
+    plugins: roiLabelPlugin ? [roiLabelPlugin] : [],
     data: {
       labels,
-      datasets: [{
-        data: vals,
-        backgroundColor: colors,
-        borderWidth: 0,
-        borderRadius: 3,
-      }]
+      datasets: [{ data: vals, backgroundColor: colors, borderWidth: 0, borderRadius: 3 }]
     },
     options: {
       indexAxis,
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: {
+          right: labelPos === 'right' ? 42 : 0,
+          top:   labelPos === 'top'   ? 18 : 0,
+        }
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => {
-              const orig = data[ctx.dataIndex];
-              return orig === null ? 'データなし' : `ROI: ${ctx.raw.toFixed(1)}%`;
-            }
+            label: ctx => data[ctx.dataIndex] === null ? 'データなし' : `ROI: ${ctx.raw.toFixed(1)}%`
           }
         }
       },
       scales: {
-        x: {
-          grid: { color: '#f1f5f9' },
-          ticks: { font: { size: 11 }, color: '#64748b' },
-        },
+        x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 11 }, color: '#64748b' } },
         y: {
           grid: { color: '#f1f5f9' },
-          ticks: { font: { size: indexAxis === 'y' ? 11 : 11 }, color: '#64748b' },
+          ticks: { font: { size: 11 }, color: '#64748b' },
           ...(indexAxis === 'x' ? { beginAtZero: true } : {})
         }
       }
@@ -298,7 +322,7 @@ function renderMonthlyChart(year) {
         ctx.font = 'bold 9px -apple-system,sans-serif';
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillStyle    = bal >= 0 ? '#22c55e' : '#ef4444';
+        ctx.fillStyle    = bal >= 0 ? '#3a9c2e' : '#e24b4a';
         ctx.fillText(text, bar.x, bar.y - 2);
         ctx.restore();
       });
@@ -384,27 +408,46 @@ function renderSummary() {
     return;
   }
 
-  // ① R0 を除外してレース番号別グラフ
+  // レース番号別（横棒、R0除外、ROIラベル右端）
   const raceFiltered = filtered.filter(r => r.race >= 1 && r.race <= 12);
   const raceKeys = RACES.map(r => `R${r}`);
   renderBarChart('chart-race', 'wrap-race',
     raceKeys,
     groupROI(raceFiltered, r => `R${r.race}`, raceKeys),
-    'x'
+    { indexAxis: 'y', labelPos: 'right', wrapHeight: 300 }
   );
 
+  // 曜日別（縦棒、ROIラベル上端）
   renderBarChart('chart-day', 'wrap-day',
     DAYS,
     groupROI(filtered, r => dow(r.date), DAYS),
-    'x'
+    { indexAxis: 'x', labelPos: 'top' }
   );
 
-  // ① 「不明」を除外して場別グラフ
+  // 場別（横棒、ROI高い順、3件未満グレー、ROIラベル右端、「不明」除外）
   const venueFiltered = filtered.filter(r => r.venue !== '不明');
+  const venueStats = {};
+  venueFiltered.forEach(r => {
+    if (!venueStats[r.venue]) venueStats[r.venue] = { bet: 0, payout: 0, count: 0 };
+    venueStats[r.venue].bet    += r.bet;
+    venueStats[r.venue].payout += r.payout;
+    venueStats[r.venue].count++;
+  });
+  const venueEntries = Object.entries(venueStats)
+    .filter(([, s]) => s.bet > 0)
+    .map(([venue, s]) => ({ venue, roi: s.payout / s.bet * 100, count: s.count }))
+    .sort((a, b) => b.roi - a.roi);
+
   renderBarChart('chart-venue', 'wrap-venue',
-    VENUES,
-    groupROI(venueFiltered, r => r.venue, VENUES),
-    'y'
+    venueEntries.map(e => e.venue),
+    venueEntries.map(e => e.roi),
+    {
+      indexAxis: 'y',
+      labelPos: 'right',
+      counts: venueEntries.map(e => e.count),
+      minCount: 3,
+      wrapHeight: Math.max(140, venueEntries.length * 32),
+    }
   );
 }
 
