@@ -1,10 +1,10 @@
 {
-  "name": "競艇収支管理",
-  "short_name": "競艇収支",
-  "description": "競艇の掛け金・払戻金を管理するPWAアプリ",
-  "start_url": "./index.html",
+  "name": "レース収支管理",
+  "short_name": "収支管理",
+  "description": "競馬・競輪・オートレース・競艇 収支管理アプリ",
+  "start_url": ".",
   "display": "standalone",
-  "background_color": "#0ea5c8",
+  "background_color": "#ffffff",
   "theme_color": "#0ea5c8",
   "orientation": "portrait",
   "icons": [

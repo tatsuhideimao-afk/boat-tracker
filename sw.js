@@ -1,10 +1,12 @@
 'use strict';
 
-const CACHE_NAME = 'boat-tracker-v2';
+const CACHE_NAME = 'racing-tracker-v1';
 const STATIC_ASSETS = [
+  './',
   './index.html',
   './style.css',
   './app.js',
+  './config.js',
   './manifest.json',
   './icon.svg',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'
