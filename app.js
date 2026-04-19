@@ -95,6 +95,38 @@ async function gasFetch(opts = {}) {
   }
 }
 
+// GAS から全件取得してローカルを上書き
+async function loadFromGAS() {
+  if (!navigator.onLine || !gasUrl()) return;
+  updateSyncIndicator('同期中…');
+  try {
+    const res = await fetch(gasUrl(), {
+      method: 'GET',
+      mode: 'cors',
+      redirect: 'follow'
+    });
+    const data = await res.json();
+    if (data?.status === 'success' && Array.isArray(data.records)) {
+      records = data.records;
+      saveStorage();
+      updateBadge(getPending().length);
+      // 現在表示中のタブを再描画
+      const activeTab = document.querySelector('.tab-content.active')?.id?.replace('tab-', '');
+      if (activeTab === 'results') renderPendingList();
+      if (activeTab === 'summary') renderSummary();
+      if (activeTab === 'history') renderHistoryList();
+      updateSyncIndicator('');
+      console.log('[GAS] 全件取得:', records.length, '件');
+    } else {
+      console.warn('[GAS] GET失敗:', data);
+      updateSyncIndicator('');
+    }
+  } catch (err) {
+    console.error('[GAS] GET エラー:', err);
+    updateSyncIndicator('');
+  }
+}
+
 async function syncWithGAS() {
   if (!navigator.onLine || !gasUrl()) return;
   if (!pendingSyncs.length) return;
@@ -1179,7 +1211,10 @@ function init() {
   });
 
   // Online/offline
-  window.addEventListener('online',  () => syncWithGAS());
+  window.addEventListener('online', async () => {
+    await syncWithGAS();   // 未送信分を先に flush
+    await loadFromGAS();   // 最新データを取得
+  });
   window.addEventListener('offline', () => updateSyncIndicator('オフライン'));
 
   // Service worker
@@ -1187,8 +1222,10 @@ function init() {
     navigator.serviceWorker.register('./sw.js').catch(console.error);
   }
 
-  // Initial GAS sync
-  if (navigator.onLine && gasUrl()) syncWithGAS();
+  // 起動時: pending flush → 全件取得
+  if (navigator.onLine && gasUrl()) {
+    syncWithGAS().then(() => loadFromGAS());
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
