@@ -97,42 +97,83 @@ async function gasFetch(opts = {}) {
 
 async function syncWithGAS() {
   if (!navigator.onLine || !gasUrl()) return;
+  if (!pendingSyncs.length) return;
   updateSyncIndicator('同期中…');
 
-  // flush pending writes
   const failed = [];
   for (const item of pendingSyncs) {
-    console.log('[GAS] POST送信:', item.action, item.record?.id);
-    const res = await gasFetch({
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(item)
-    });
-    if (!res || res.status !== 'success') {
-      console.warn('[GAS] POST失敗:', res);
+    console.log('GAS再送信 (pending):', item.action, item.record?.id);
+    try {
+      const res = await fetch(gasUrl(), {
+        method: 'POST',
+        mode: 'cors',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(item)
+      });
+      const data = await res.json();
+      if (data?.status !== 'success') {
+        console.error('GAS再送信失敗:', data);
+        failed.push(item);
+      } else {
+        console.log('GAS再送信成功:', item.action);
+      }
+    } catch (err) {
+      console.error('GAS再送信エラー:', err);
       failed.push(item);
-    } else {
-      console.log('[GAS] POST成功:', item.action, item.record?.id);
     }
   }
   pendingSyncs = failed;
-
-  // pull latest
-  const res = await gasFetch();
-  if (res?.records) {
-    records = res.records;
-    saveStorage();
-    updateBadge(getPending().length);
-  } else {
-    saveStorage();
-  }
+  saveStorage();
   updateSyncIndicator(failed.length ? `未同期 ${failed.length}件` : '');
 }
 
-function queueSync(action, record) {
-  pendingSyncs.push({ action, record });
-  saveStorage();
-  if (navigator.onLine && gasUrl()) syncWithGAS();
+// GAS に直接 POST する（失敗時は pendingSyncs に積む）
+async function gasPost(action, record) {
+  const url = gasUrl();
+  const payload = { action, record };
+  console.log('GAS送信:', url, payload);
+
+  if (!url) {
+    console.warn('GAS送信スキップ: GAS_URL が未設定');
+    pendingSyncs.push(payload);
+    saveStorage();
+    updateSyncIndicator(`未同期 ${pendingSyncs.length}件`);
+    return;
+  }
+  if (!navigator.onLine) {
+    console.warn('GAS送信スキップ: オフライン');
+    pendingSyncs.push(payload);
+    saveStorage();
+    updateSyncIndicator(`未同期 ${pendingSyncs.length}件`);
+    return;
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      mode: 'cors',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    });
+    console.log('[GAS] レスポンスステータス:', res.status, res.statusText);
+    const data = await res.json();
+    console.log('[GAS] レスポンスデータ:', data);
+    if (data?.status !== 'success') {
+      console.error('GAS送信失敗:', data);
+      pendingSyncs.push(payload);
+      saveStorage();
+      updateSyncIndicator(`未同期 ${pendingSyncs.length}件`);
+    } else {
+      updateSyncIndicator('');
+    }
+  } catch (err) {
+    console.error('GAS送信失敗:', err);
+    pendingSyncs.push(payload);
+    saveStorage();
+    updateSyncIndicator(`未同期 ${pendingSyncs.length}件`);
+  }
 }
 
 function updateSyncIndicator(text) {
@@ -148,7 +189,7 @@ function addRecord(data) {
   const r = { id: genId(), ...data, createdAt: Date.now() };
   records.unshift(r);
   saveStorage();
-  queueSync('add', r);
+  gasPost('add', r);
   updateBadge(getPending().length);
 }
 
@@ -157,7 +198,7 @@ function updateRec(id, updates) {
   if (i < 0) return;
   records[i] = { ...records[i], ...updates };
   saveStorage();
-  queueSync('update', records[i]);
+  gasPost('update', records[i]);
   updateBadge(getPending().length);
 }
 
@@ -166,7 +207,7 @@ function deleteRec(id) {
   if (!r) return;
   records = records.filter(x => x.id !== id);
   saveStorage();
-  queueSync('delete', { id });
+  gasPost('delete', { id });
   updateBadge(getPending().length);
 }
 
