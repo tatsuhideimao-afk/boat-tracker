@@ -624,6 +624,7 @@ function calcNoriKPI(recs, viewMember) {
   let personalBet = 0;
   let personalPayout = 0;
   let count = 0;
+  let hits  = 0;
 
   recs.forEach(r => {
     let members;
@@ -637,12 +638,14 @@ function calcNoriKPI(recs, viewMember) {
       personalBet    += (r.bet    || 0) / n;
       personalPayout += (r.payout || 0) / n;
       count++;
+      if (r.payout > 0) hits++;
     }
   });
 
-  const profit = personalPayout - personalBet;
-  const roi    = personalBet > 0 ? personalPayout / personalBet * 100 : null;
-  return { personalBet, personalPayout, profit, roi, count };
+  const profit  = personalPayout - personalBet;
+  const roi     = personalBet > 0 ? personalPayout / personalBet * 100 : null;
+  const hitRate = count > 0 ? hits / count * 100 : null;
+  return { personalBet, personalPayout, profit, roi, count, hitRate };
 }
 
 function renderNoriTab() {
@@ -665,6 +668,9 @@ function renderNoriTab() {
 
   document.getElementById('nori-kpi-count').textContent = kpi.count;
 
+  const hitRateEl = document.getElementById('nori-kpi-hitrate');
+  if (hitRateEl) hitRateEl.textContent = kpi.hitRate != null ? kpi.hitRate.toFixed(1) + '%' : '—';
+
   renderPredictorChart(noriRecs);
 }
 
@@ -673,19 +679,20 @@ function renderPredictorChart(noriRecs) {
   const wrapId   = 'wrap-predictor';
 
   const stats = {};
-  MEMBERS.forEach(m => { stats[m] = { bet: 0, payout: 0, count: 0 }; });
+  MEMBERS.forEach(m => { stats[m] = { bet: 0, payout: 0, total: 0, wins: 0 }; });
 
   noriRecs.filter(r => r.predictor && stats[r.predictor]).forEach(r => {
     stats[r.predictor].bet    += r.bet    || 0;
     stats[r.predictor].payout += r.payout || 0;
-    stats[r.predictor].count++;
+    stats[r.predictor].total++;
+    if (r.payout > 0) stats[r.predictor].wins++;
   });
 
   const entries = MEMBERS.map(m => ({
-    label: `${m}(${stats[m].count}件)`,
+    label: `${m}（${stats[m].wins}勝/${stats[m].total}件）`,
     roi:   stats[m].bet > 0 ? stats[m].payout / stats[m].bet * 100 : null,
-    count: stats[m].count
-  })).filter(e => e.count > 0).sort((a, b) => (b.roi ?? -Infinity) - (a.roi ?? -Infinity));
+    total: stats[m].total
+  })).filter(e => e.total > 0).sort((a, b) => (b.roi ?? -Infinity) - (a.roi ?? -Infinity));
 
   renderHBar(canvasId, wrapId,
     entries.map(e => e.label),
